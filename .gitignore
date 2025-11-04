@@ -23,10 +23,6 @@ wheels/
 .installed.cfg
 *.egg
 
-# Google Drive credentials
-credentials.json
-token.json
-
 # Generated audio files
 archaeological_narration_*.mp3
 
