@@ -8,7 +8,8 @@ An AI program for FLL competition that looks at drone photos and creates present
 2. 👁️ Uses AI to find artifacts (coins, pottery, swords, bones, etc.)
 3. ✍️ Writes a presentation script
 4. 🔊 Creates audio narration (30-40 seconds)
-5. 🎨 Makes a web page with photos and audio
+5. 🎨 Makes a web page with photos and audio 
+6. We are also printing a table of artifacts
 
 ## Quick Start
 
