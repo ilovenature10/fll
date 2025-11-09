@@ -138,6 +138,131 @@ class ImageAnalyzer:
             print(f"Error analyzing image {image_path}: {e}")
             return {'success': False, 'analysis': f"Could not analyze image: {str(e)}"}
     
+    def extract_artifacts(self, all_analyses: List[str]) -> List[Dict]:
+        """
+        Extract structured artifact information from analyses.
+        
+        Args:
+            all_analyses: List of analysis text strings
+            
+        Returns:
+            List of dictionaries with artifact information
+        """
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": """You are extracting structured information about archaeological artifacts from image analyses.
+                        Return a JSON array of artifacts, each with: name, time_period, country_of_origin, and additional_info.
+                        Time period should be an estimated period (e.g., "Ancient Roman (100-300 CE)", "Modern (2024)", "Medieval (1000-1500 CE)", "Unknown").
+                        Country of origin should be the most likely country/region where this type of artifact was typically made (e.g., "Roman Empire", "United States", "Unknown").
+                        Additional info should include condition, location, or other relevant details."""
+                    },
+                    {
+                        "role": "user",
+                        "content": f"""Extract all artifacts mentioned in these analyses and return as JSON array.
+                        For each artifact, provide:
+                        - name: The artifact name (e.g., "Coin", "Brass Pot", "Sword", "Bone", "Stone Drawing")
+                        - time_period: Estimated time period when it was made (e.g., "Ancient Roman (100-300 CE)", "Modern (2024)", "Medieval (1000-1500 CE)", "Unknown" or specific year/range if mentioned)
+                        - country_of_origin: Most likely country or region of origin based on the artifact type and any visible characteristics (e.g., "Roman Empire", "United States", "Ancient Greece", "Unknown")
+                        - additional_info: Any relevant details (condition, location, description, etc.)
+                        
+                        Use your knowledge of archaeology and history to estimate time periods and countries of origin when not explicitly stated.
+                        For example:
+                        - Modern US coins (Penny, Dime) → "Modern (2000-2024)" / "United States"
+                        - Ancient Roman-style coins → "Ancient Roman (100-300 CE)" / "Roman Empire"
+                        - Brass vessels → "Medieval to Modern" / "Various (Middle East, Europe)"
+                        - Swords → "Medieval to Ancient" / "Europe or Middle East"
+                        - Stone drawings/carvings → "Prehistoric to Ancient" / "Various"
+                        
+                        Analyses:
+                        {chr(10).join(f'Analysis {i+1}: {analysis}' for i, analysis in enumerate(all_analyses))}
+                        
+                        Return a JSON object with an "artifacts" key containing an array. Example format:
+                        {{
+                            "artifacts": [
+                                {{"name": "Coin", "time_period": "Modern (2024)", "country_of_origin": "United States", "additional_info": "Modern penny, good condition"}},
+                                {{"name": "Brass Pot", "time_period": "Medieval (1000-1500 CE)", "country_of_origin": "Middle East or Europe", "additional_info": "Complete with lid, visible in center of image"}}
+                            ]
+                        }}"""
+                    }
+                ],
+                response_format={"type": "json_object"},
+                max_tokens=1000
+            )
+            
+            import json
+            result = json.loads(response.choices[0].message.content)
+            
+            # Handle both direct array and wrapped in object
+            if isinstance(result, list):
+                return result
+            elif isinstance(result, dict) and 'artifacts' in result:
+                return result['artifacts']
+            elif isinstance(result, dict):
+                # If it's a dict with artifact keys, convert to list
+                artifacts = []
+                for key, value in result.items():
+                    if isinstance(value, dict) and 'name' in value:
+                        artifacts.append(value)
+                    elif isinstance(value, list):
+                        artifacts.extend(value)
+                return artifacts if artifacts else []
+            else:
+                return []
+        
+        except Exception as e:
+            print(f"Warning: Could not extract structured artifacts: {e}")
+            # Fallback: try to parse basic info from analyses
+            artifacts = []
+            for analysis in all_analyses:
+                analysis_lower = analysis.lower()
+                if 'coin' in analysis_lower:
+                    # Try to determine if modern or ancient
+                    if 'penny' in analysis_lower or 'dime' in analysis_lower or 'modern' in analysis_lower:
+                        time_period = 'Modern (2000-2024)'
+                        country = 'United States'
+                    else:
+                        time_period = 'Unknown (possibly Ancient)'
+                        country = 'Unknown'
+                    artifacts.append({
+                        'name': 'Coin',
+                        'time_period': time_period,
+                        'country_of_origin': country,
+                        'additional_info': analysis[:100] + '...' if len(analysis) > 100 else analysis
+                    })
+                if 'pot' in analysis_lower or 'vessel' in analysis_lower:
+                    artifacts.append({
+                        'name': 'Brass Pot',
+                        'time_period': 'Medieval to Modern (1000-1800 CE)',
+                        'country_of_origin': 'Middle East or Europe',
+                        'additional_info': analysis[:100] + '...' if len(analysis) > 100 else analysis
+                    })
+                if 'sword' in analysis_lower:
+                    artifacts.append({
+                        'name': 'Sword',
+                        'time_period': 'Medieval to Ancient (500 BCE - 1500 CE)',
+                        'country_of_origin': 'Europe or Middle East',
+                        'additional_info': analysis[:100] + '...' if len(analysis) > 100 else analysis
+                    })
+                if 'bone' in analysis_lower:
+                    artifacts.append({
+                        'name': 'Bone',
+                        'time_period': 'Unknown (Prehistoric to Modern)',
+                        'country_of_origin': 'Unknown',
+                        'additional_info': analysis[:100] + '...' if len(analysis) > 100 else analysis
+                    })
+                if 'drawing' in analysis_lower or 'carving' in analysis_lower:
+                    artifacts.append({
+                        'name': 'Stone Drawing',
+                        'time_period': 'Prehistoric to Ancient (3000 BCE - 500 CE)',
+                        'country_of_origin': 'Various (depends on style)',
+                        'additional_info': analysis[:100] + '...' if len(analysis) > 100 else analysis
+                    })
+            return artifacts
+    
     def analyze_multiple_images(self, image_paths: List[str]):
         """
         Analyze several images and create a presentation script.
@@ -151,9 +276,10 @@ class ImageAnalyzer:
             image_paths: List of paths to image files
             
         Returns:
-            Tuple of (narration_text, jpg_image_paths)
+            Tuple of (narration_text, jpg_image_paths, artifacts)
             - narration_text: The presentation script
             - jpg_image_paths: List of JPG image paths (for presentation)
+            - artifacts: List of dictionaries with artifact information
         """
         print(f"\nAnalyzing {len(image_paths)} image(s)...")
         
@@ -175,7 +301,10 @@ class ImageAnalyzer:
         
         # If no images were analyzed successfully
         if not all_analyses:
-            return ("Unable to analyze any images.", jpg_image_paths)
+            return ("Unable to analyze any images.", jpg_image_paths, [])
+        
+        # Extract structured artifact information
+        artifacts = self.extract_artifacts(all_analyses)
         
         # Create a presentation script from all the analyses
         try:
@@ -225,11 +354,11 @@ class ImageAnalyzer:
             )
             
             narration_text = response.choices[0].message.content
-            return (narration_text, jpg_image_paths)
+            return (narration_text, jpg_image_paths, artifacts)
         
         except Exception as e:
             print(f"Error generating presentation script: {e}")
             # If AI fails, just combine the analyses
             narration_text = "\n\n".join(all_analyses)
-            return (narration_text, jpg_image_paths)
+            return (narration_text, jpg_image_paths, artifacts)
 

@@ -33,6 +33,55 @@ from archaeological_agent.audio_generator import AudioGenerator
 from archaeological_agent.presentation import create_presentation, open_in_browser
 
 
+def print_artifacts_table(artifacts):
+    """
+    Print artifacts in a nicely formatted table.
+    
+    Args:
+        artifacts: List of dictionaries with artifact information
+    """
+    if not artifacts:
+        print("\nNo artifacts found to display in table.")
+        return
+    
+    print(f"\n{'='*80}")
+    print("ARTIFACTS TABLE")
+    print(f"{'='*80}\n")
+    
+    # Calculate column widths
+    name_width = max(len("Artifact Name"), max((len(str(a.get('name', 'Unknown'))) for a in artifacts), default=0))
+    period_width = max(len("Estimated Time Period"), max((len(str(a.get('time_period', 'Unknown'))) for a in artifacts), default=0))
+    country_width = max(len("Country of Origin"), max((len(str(a.get('country_of_origin', 'Unknown'))) for a in artifacts), default=0))
+    info_width = max(len("Additional Information"), max((len(str(a.get('additional_info', 'N/A'))) for a in artifacts), default=0))
+    
+    # Ensure minimum widths
+    name_width = max(name_width, 15)
+    period_width = max(period_width, 20)
+    country_width = max(country_width, 18)
+    info_width = max(info_width, 25)
+    
+    # Print header
+    header = f"{'Artifact Name':<{name_width}} | {'Estimated Time Period':<{period_width}} | {'Country of Origin':<{country_width}} | {'Additional Information':<{info_width}}"
+    print(header)
+    print("-" * len(header))
+    
+    # Print each artifact
+    for artifact in artifacts:
+        name = str(artifact.get('name', 'Unknown'))
+        period = str(artifact.get('time_period', 'Unknown'))
+        country = str(artifact.get('country_of_origin', 'Unknown'))
+        info = str(artifact.get('additional_info', 'N/A'))
+        
+        # Truncate info if too long
+        if len(info) > info_width:
+            info = info[:info_width-3] + "..."
+        
+        row = f"{name:<{name_width}} | {period:<{period_width}} | {country:<{country_width}} | {info:<{info_width}}"
+        print(row)
+    
+    print(f"\n{'='*80}\n")
+
+
 def main():
     """Main function - this is where the program starts!"""
     
@@ -86,12 +135,20 @@ def main():
         
         narration_result = analyzer.analyze_multiple_images(image_paths)
         
-        # Get the narration text and JPG image paths
-        if isinstance(narration_result, tuple):
+        # Get the narration text, JPG image paths, and artifacts
+        if isinstance(narration_result, tuple) and len(narration_result) == 3:
+            narration_text, jpg_image_paths, artifacts = narration_result
+        elif isinstance(narration_result, tuple) and len(narration_result) == 2:
+            # Backward compatibility with old return format
             narration_text, jpg_image_paths = narration_result
+            artifacts = []
         else:
             narration_text = narration_result
             jpg_image_paths = image_paths
+            artifacts = []
+        
+        # Print artifacts table
+        print_artifacts_table(artifacts)
         
         print(f"\nGenerated Presentation Script:")
         print(f"{'-'*60}")
